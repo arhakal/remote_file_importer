@@ -54,15 +54,28 @@ CSMIDServerRemoteFileImport.prototype = {
         }
         var conn = new Packages.java.net.URL(url).openConnection();
         this.logMsg("Sending to : " + url, "debug");
-        var userpass = new Packages.java.lang.String(this.probeParameters.instanceUser + ":" + this.probeParameters.instancePassword);
-        var basicAuth = "Basic " + (new Packages.javax.xml.bind.DatatypeConverter.printBase64Binary(userpass.getBytes()) + '');
-        conn.setRequestProperty("Authorization", basicAuth);
+        conn.setRequestProperty("Authorization", this._getAuthorizationHeader());
         conn.setDoOutput(true);
         conn.setRequestMethod("POST");
         conn.setUseCaches(false);
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + this.boundary);
         conn.setRequestProperty("User-Agent", "MID Server POST");
         return conn;
+    },
+    _getAuthorizationHeader: function() {
+        if (this.probeParameters.instanceUser && this.probeParameters.instancePassword) {
+            this.logMsg("Using Basic authentication", "debug");
+            var userpass = new Packages.java.lang.String(this.probeParameters.instanceUser + ":" + this.probeParameters.instancePassword);
+            var basicAuth = "Basic " + (new Packages.javax.xml.bind.DatatypeConverter.printBase64Binary(userpass.getBytes()) + '');
+            return basicAuth;
+        }
+        // JWT (ServiceNow certificate / IPKI) MID Servers have no instance credentials in config.xml:
+        // reuse the JWT the MID Server itself authenticates to the instance with.
+        var token = Packages.com.snc.midserver.security.auth.api.JwtServiceProvider.get().getToken();
+        if (!token.isPresent())
+            throw "No mid.instance.username/password in config.xml and no JWT available from the MID Server";
+        this.logMsg("Using JWT authentication", "debug");
+        return "Bearer " + token.get();
     },
     _getFile: function() {
         return new Packages.java.io.File(this.probeParameters.filePath);
